@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>우리집 책장</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="top">
+    <h1>📚 우리집 책장</h1>
+    <div class="top-actions">
+      <button type="button" id="exportBtn" class="ghost">내보내기</button>
+      <label class="ghost button-like">
+        가져오기
+        <input type="file" id="importInput" accept="application/json,.json" hidden>
+      </label>
+    </div>
+  </header>
+
+  <main>
+    <section class="search-box">
+      <input type="search" id="searchInput" placeholder="제목, 저자, 출판사로 검색 — 이 책 갖고 있나?" autocomplete="off">
+      <div id="ownership" class="ownership" hidden></div>
+    </section>
+
+    <section class="stats" id="stats"></section>
+
+    <nav class="tabs" id="statusTabs">
+      <button type="button" data-status="all" class="active">전체</button>
+      <button type="button" data-status="unread">안 읽음</button>
+      <button type="button" data-status="reading">읽는 중</button>
+      <button type="button" data-status="read">읽음</button>
+    </nav>
+
+    <section class="toolbar">
+      <select id="genreFilter" aria-label="종류 필터">
+        <option value="">모든 종류</option>
+      </select>
+      <select id="sortSelect" aria-label="정렬">
+        <option value="recent">최근 추가순</option>
+        <option value="title">제목순</option>
+        <option value="author">저자순</option>
+      </select>
+      <button type="button" id="addBtn" class="primary">+ 책 추가</button>
+    </section>
+
+    <ul id="bookList" class="book-list"></ul>
+    <p id="emptyMsg" class="empty" hidden></p>
+  </main>
+
+  <dialog id="bookDialog">
+    <form id="bookForm" method="dialog">
+      <h2 id="dialogTitle">책 추가</h2>
+      <label>제목 <span class="req">*</span>
+        <input name="title" required autocomplete="off">
+      </label>
+      <label>저자
+        <input name="author" list="authorList" autocomplete="off">
+      </label>
+      <label>출판사
+        <input name="publisher" list="publisherList" autocomplete="off">
+      </label>
+      <label>종류
+        <input name="genre" list="genreList" placeholder="소설, 시, 에세이…" autocomplete="off">
+      </label>
+      <fieldset class="status-field">
+        <legend>읽기 상태</legend>
+        <label><input type="radio" name="status" value="unread" checked> 안 읽음</label>
+        <label><input type="radio" name="status" value="reading"> 읽는 중</label>
+        <label><input type="radio" name="status" value="read"> 읽음</label>
+      </fieldset>
+      <label>메모
+        <textarea name="memo" rows="2"></textarea>
+      </label>
+      <p id="dupWarning" class="warning" hidden></p>
+      <div class="dialog-actions">
+        <button type="button" id="deleteBtn" class="danger" hidden>삭제</button>
+        <span class="spacer"></span>
+        <button type="button" id="cancelBtn" class="ghost">취소</button>
+        <button type="submit" class="primary">저장</button>
+      </div>
+    </form>
+  </dialog>
+
+  <datalist id="genreList"></datalist>
+  <datalist id="authorList"></datalist>
+  <datalist id="publisherList"></datalist>
+
+  <script src="app.js"></script>
+</body>
+</html>
