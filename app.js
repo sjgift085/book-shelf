@@ -58,8 +58,6 @@ function sanitizeBook(b) {
 
   let memo = str(b.memo);
   let kdcMain = digit(b.kdcMain, 0);
-  let kdcDiv = kdcMain ? digit(b.kdcDiv, 1) : '';
-  if (kdcDiv && !KDC[kdcMain].divs[kdcDiv]) kdcDiv = '';
   let litForm = kdcMain === LITERATURE ? digit(b.litForm, 1) : '';
   if (litForm === '9') litForm = '';
 
@@ -69,7 +67,6 @@ function sanitizeBook(b) {
     const mapped = LEGACY_GENRE_MAP[genre];
     if (mapped) {
       kdcMain = mapped.main;
-      kdcDiv = mapped.div || '';
       litForm = mapped.form || '';
     } else {
       memo = memo ? `${memo} (이전 종류: ${genre})` : `이전 종류: ${genre}`;
@@ -83,7 +80,6 @@ function sanitizeBook(b) {
     author: str(b.author),
     publisher: str(b.publisher),
     kdcMain,
-    kdcDiv,
     litForm,
     ownership,
     library: ownership === 'borrowed' ? str(b.library) : '',
@@ -109,13 +105,12 @@ function matchesQuery(book, q) {
   return [book.title, book.author, book.publisher].some((f) => normalize(f).includes(q));
 }
 
-// 분류 필터 값: "m:8" 주류, "d:81" 강목, "f:3" 문학 형식, "none" 미분류
+// 분류 필터 값: "m:8" 주류, "f:3" 문학 형식, "none" 미분류
 function matchesKdc(book, filter) {
   if (!filter) return true;
   if (filter === 'none') return !book.kdcMain;
   const [type, v] = filter.split(':');
   if (type === 'm') return book.kdcMain === v;
-  if (type === 'd') return book.kdcMain === v[0] && book.kdcDiv === v[1];
   if (type === 'f') return book.kdcMain === LITERATURE && book.litForm === v;
   return true;
 }
@@ -176,10 +171,10 @@ function render() {
 function compareBooks(a, b) {
   const byTitle = a.title.localeCompare(b.title, 'ko');
   if (state.sort === 'title') return byTitle;
-  if (state.sort === 'author') return (a.author || '￿').localeCompare(b.author || '￿', 'ko') || byTitle;
+  if (state.sort === 'author') return (a.author || '\uffff').localeCompare(b.author || '\uffff', 'ko') || byTitle;
   if (state.sort === 'kdc') {
-    // 미분류는 맨 뒤, 같은 번호면 문학 형식까지 비교
-    const key = (x) => (x.kdcMain ? kdcCode(x) + (x.litForm || '0') : '￿');
+    // 미분류는 맨 뒤, 문학은 형식(시, 희곡, 소설…) 순서까지 비교
+    const key = (x) => (x.kdcMain ? x.kdcMain + (x.litForm || '0') : '\uffff');
     return key(a).localeCompare(key(b)) || byTitle;
   }
   return b.addedAt - a.addedAt;
@@ -257,27 +252,22 @@ function renderStats(books) {
   $('#stats').innerHTML = items.map(([label, n]) => `<div class="stat"><b>${n}</b><span>${label}</span></div>`).join('');
 }
 
-// 지금 책장에 있는 분류만 필터에 보여줌 (주류 → 강목, 문학은 형식별로도)
+// 지금 책장에 있는 분류만 필터에 보여줌 (문학은 형식별로도)
 function renderKdcFilter(books) {
   const opts = [];
   const add = (value, label, n) => opts.push({ value, label: `${label} (${n})` });
   const count = (filter) => books.filter((b) => matchesKdc(b, filter)).length;
 
-  KDC.forEach((main, m) => {
+  KDC.forEach((name, m) => {
     const mainKey = String(m);
     const n = count(`m:${mainKey}`);
     if (!n) return;
-    add(`m:${mainKey}`, `${mainKey}00 ${main.name}`, n);
-    main.divs.forEach((name, d) => {
-      if (!d || !name) return;
-      const dn = count(`d:${mainKey}${d}`);
-      if (dn) add(`d:${mainKey}${d}`, `  └ ${mainKey}${d}0 ${name}`, dn);
-    });
+    add(`m:${mainKey}`, `${mainKey}00 ${name}`, n);
     if (mainKey === LITERATURE) {
       LIT_FORMS.forEach((form, f) => {
         if (!form) return;
         const fn = count(`f:${f}`);
-        if (fn) add(`f:${f}`, `  └ 문학 · ${form}`, fn);
+        if (fn) add(`f:${f}`, `\u00a0\u00a0└ 문학 · ${form}`, fn);
       });
     }
   });
@@ -309,24 +299,15 @@ const form = $('#bookForm');
 const els = form.elements;
 
 els.kdcMain.innerHTML = '<option value="">미분류</option>' +
-  KDC.map((m, i) => `<option value="${i}">${i}00 ${m.name}</option>`).join('');
+  KDC.map((name, i) => `<option value="${i}">${i}00 ${name}</option>`).join('');
 els.litForm.innerHTML = '<option value="">형식 선택 안 함</option>' +
   LIT_FORMS.map((f, i) => (f ? `<option value="${i}">${f}</option>` : '')).join('');
-
-function fillDivOptions() {
-  const main = els.kdcMain.value;
-  els.kdcDiv.disabled = !main;
-  els.kdcDiv.innerHTML = main
-    ? `<option value="">${main}00 ${KDC[main].name} 전체</option>` +
-      KDC[main].divs.map((name, d) => (d && name ? `<option value="${d}">${main}${d}0 ${name}</option>` : '')).join('')
-    : '<option value="">강목</option>';
-}
 
 function updateKdcFields() {
   const isLit = els.kdcMain.value === LITERATURE;
   els.litForm.hidden = !isLit;
   if (!isLit) els.litForm.value = '';
-  const sel = { kdcMain: els.kdcMain.value, kdcDiv: els.kdcDiv.value, litForm: els.litForm.value };
+  const sel = { kdcMain: els.kdcMain.value, litForm: els.litForm.value };
   $('#kdcPreview').textContent = sel.kdcMain ? `— ${kdcCode(sel)} ${kdcName(sel)}` : '';
 }
 
@@ -341,7 +322,7 @@ function openDialog(book, prefillTitle = '') {
   $('#deleteBtn').hidden = !book;
   $('#dupWarning').hidden = true;
   const b = book || {
-    title: prefillTitle, author: '', publisher: '', kdcMain: '', kdcDiv: '', litForm: '',
+    title: prefillTitle, author: '', publisher: '', kdcMain: '', litForm: '',
     // 대여 탭을 보고 있을 때 추가하면 대여로 시작 (검색 후 "소장 도서로 추가"는 항상 소장)
     ownership: !prefillTitle && state.ownership === 'borrowed' ? 'borrowed' : 'owned',
     library: '', status: 'unread', memo: '',
@@ -350,8 +331,6 @@ function openDialog(book, prefillTitle = '') {
   els.ownership.value = b.ownership;
   els.status.value = b.status;
   els.kdcMain.value = b.kdcMain;
-  fillDivOptions();
-  els.kdcDiv.value = b.kdcDiv;
   els.litForm.value = b.litForm;
   updateKdcFields();
   updateLibraryField();
@@ -385,7 +364,6 @@ form.addEventListener('submit', (e) => {
     author: els.author.value,
     publisher: els.publisher.value,
     kdcMain: els.kdcMain.value,
-    kdcDiv: els.kdcDiv.value,
     litForm: els.litForm.value,
     ownership: els.ownership.value,
     library: els.library.value,
@@ -413,8 +391,7 @@ form.addEventListener('submit', (e) => {
 
 els.title.addEventListener('input', updateDupWarning);
 els.author.addEventListener('input', updateDupWarning);
-els.kdcMain.addEventListener('change', () => { fillDivOptions(); updateKdcFields(); });
-els.kdcDiv.addEventListener('change', updateKdcFields);
+els.kdcMain.addEventListener('change', updateKdcFields);
 els.litForm.addEventListener('change', updateKdcFields);
 form.querySelectorAll('[name=ownership]').forEach((r) => r.addEventListener('change', () => {
   updateLibraryField();

@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>우리집 책장</title>
-  <link rel="stylesheet" href="style.css?v=2">
+  <link rel="stylesheet" href="style.css?v=3">
   <script>
     // 브라우저에 이전 버전 파일이 남아 새 파일과 섞이면 목록이 비어 보일 수 있어 안내를 띄움
     window.addEventListener('error', function () {
@@ -72,8 +72,8 @@
       <h2 id="dialogTitle">책 추가</h2>
       <fieldset class="radio-field">
         <legend>소장 / 대여</legend>
-        <label><input type="radio" name="ownership" value="owned" checked> 🏠 소장 (집에 있는 책)</label>
-        <label><input type="radio" name="ownership" value="borrowed"> 🏛️ 대여 (빌려 본 책)</label>
+        <label><input type="radio" name="ownership" value="owned" checked> 🏠 소장</label>
+        <label><input type="radio" name="ownership" value="borrowed"> 🏛️ 대여</label>
       </fieldset>
       <label id="libraryField" hidden>도서관
         <input name="library" list="libraryList" placeholder="예: 시립중앙도서관" autocomplete="off">
@@ -90,10 +90,9 @@
       <div class="kdc-field">
         <span class="field-label">분류 (KDC) <span id="kdcPreview" class="kdc-preview"></span></span>
         <div class="kdc-selects">
-          <select name="kdcMain" aria-label="주류"></select>
-          <select name="kdcDiv" aria-label="강목"></select>
+          <select name="kdcMain" aria-label="분류"></select>
+          <select name="litForm" id="litFormSelect" aria-label="문학 형식" hidden></select>
         </div>
-        <select name="litForm" id="litFormSelect" aria-label="문학 형식" hidden></select>
       </div>
       <fieldset class="radio-field">
         <legend>읽기 상태</legend>
@@ -118,7 +117,7 @@
   <datalist id="publisherList"></datalist>
   <datalist id="libraryList"></datalist>
 
-  <script src="kdc.js?v=2"></script>
-  <script src="app.js?v=2"></script>
+  <script src="kdc.js?v=3"></script>
+  <script src="app.js?v=3"></script>
 </body>
 </html>
