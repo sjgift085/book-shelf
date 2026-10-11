@@ -1,6 +1,6 @@
 // 구글 로그인 + Firestore로 여러 기기의 책 목록을 맞춤.
 // 책 하나 = users/{uid}/books/{책 id} 문서 하나. 삭제한 책은 { deleted: true }로 남겨 다른 기기에도 전달함.
-import { firebaseConfig } from './firebase-config.js?v=6';
+import { firebaseConfig } from './firebase-config.js?v=7';
 
 const SDK = 'https://www.gstatic.com/firebasejs/10.14.1';
 const btn = document.getElementById('syncBtn');

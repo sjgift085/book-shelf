@@ -4,11 +4,11 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>나만의 책장</title>
-  <link rel="stylesheet" href="style.css?v=6">
+  <link rel="stylesheet" href="style.css?v=7">
   <script>
     // 앱을 고칠 때마다 이 숫자, version.json, 아래 ?v= 값을 함께 올릴 것.
     // 브라우저가 예전 페이지를 캐시해 두었으면 version.json과 달라지므로, 캐시를 갱신하고 한 번 새로고침함.
-    var APP_VERSION = 6;
+    var APP_VERSION = 7;
     fetch('version.json', { cache: 'no-store' })
       .then(function (r) { return r.json(); })
       .then(function (data) {
@@ -136,8 +136,8 @@
   <datalist id="publisherList"></datalist>
   <datalist id="libraryList"></datalist>
 
-  <script src="kdc.js?v=6"></script>
-  <script src="app.js?v=6"></script>
-  <script type="module" src="sync.js?v=6"></script>
+  <script src="kdc.js?v=7"></script>
+  <script src="app.js?v=7"></script>
+  <script type="module" src="sync.js?v=7"></script>
 </body>
 </html>
