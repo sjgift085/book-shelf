@@ -3,6 +3,8 @@
 const STORAGE_KEY = 'bookshelf.books.v1';
 // 데이터 형식을 바꾸기 전의 원본을 한 번 보관해 두는 곳
 const BACKUP_KEY = 'bookshelf.books.v1.backup';
+// 삭제한 책 기록 {id: 삭제 시각}. 다른 기기에도 삭제를 전달하려고 남겨 둠
+const DELETED_KEY = 'bookshelf.deleted.v1';
 const STATUS_LABELS = { unread: '안 읽음', reading: '읽는 중', read: '읽음' };
 const OWNERSHIP_LABELS = { owned: '소장', borrowed: '대여' };
 
@@ -13,6 +15,7 @@ let loadFailed = false;
 
 const state = {
   books: loadBooks(),
+  deleted: loadDeleted(),
   ownership: 'all',
   status: 'all',
   kdc: '',
@@ -39,7 +42,21 @@ function loadBooks() {
   }
 }
 
+function loadDeleted() {
+  try {
+    const data = JSON.parse(localStorage.getItem(DELETED_KEY) || '{}');
+    return data && typeof data === 'object' && !Array.isArray(data) ? data : {};
+  } catch {
+    return {};
+  }
+}
+
 function saveBooks() {
+  try {
+    localStorage.setItem(DELETED_KEY, JSON.stringify(state.deleted));
+  } catch {
+    // 삭제 기록은 동기화용이라 저장에 실패해도 책 목록 저장은 계속함
+  }
   if (loadFailed) {
     alert('저장된 책 목록을 읽지 못해서, 기존 기록을 지키기 위해 저장하지 않았어요. 페이지를 새로고침해 주세요.');
     return;
@@ -75,7 +92,8 @@ function sanitizeBook(b) {
 
   const ownership = b.ownership === 'borrowed' ? 'borrowed' : 'owned';
   return {
-    id: str(b.id) || newId(),
+    // 동기화 저장소의 문서 이름으로도 쓰이므로 안전한 글자만 허용
+    id: /^[\w-]{1,64}$/.test(b.id) ? b.id : newId(),
     title: b.title.trim(),
     author: str(b.author),
     publisher: str(b.publisher),
@@ -86,12 +104,68 @@ function sanitizeBook(b) {
     status: STATUS_LABELS[b.status] ? b.status : 'unread',
     memo,
     addedAt: Number(b.addedAt) || Date.now(),
+    // 기기 간 동기화 때 더 최근에 고친 쪽을 남기는 기준
+    updatedAt: Number(b.updatedAt) || Number(b.addedAt) || Date.now(),
   };
 }
 
 function newId() {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
 }
+
+// ---------- changes & sync ----------
+
+// 로컬에 저장하고 화면을 갱신한 뒤, 로그인 중이면 바뀐 책을 동기화 저장소에도 보냄
+function commitChanges(changedBooks = [], deletedIds = []) {
+  saveBooks();
+  render();
+  if (window.bookshelfSync) {
+    window.bookshelfSync.push(changedBooks, deletedIds.map((id) => ({ id, updatedAt: state.deleted[id] })));
+  }
+}
+
+// 동기화 저장소의 문서들과 합침. 같은 책이면 updatedAt이 더 최근인 쪽이 이김.
+// 로컬이 더 최근이거나 저장소에 없는 것은 돌려줘서 저장소에 올리게 함.
+function mergeRemote(docs) {
+  const toPush = { books: [], deleted: [] };
+  const remoteIds = new Set();
+  let changed = false;
+
+  for (const { id, data } of docs) {
+    remoteIds.add(id);
+    const remoteTime = Number(data.updatedAt) || 0;
+    const idx = state.books.findIndex((b) => b.id === id);
+    const localTime = idx >= 0 ? state.books[idx].updatedAt : state.deleted[id] || 0;
+
+    if (remoteTime > localTime) {
+      if (data.deleted) {
+        if (idx >= 0) state.books.splice(idx, 1);
+        state.deleted[id] = remoteTime;
+      } else {
+        const book = sanitizeBook({ ...data, id });
+        if (!book) continue;
+        if (idx >= 0) state.books[idx] = book;
+        else state.books.push(book);
+        delete state.deleted[id];
+      }
+      changed = true;
+    } else if (remoteTime < localTime) {
+      if (idx >= 0) toPush.books.push(state.books[idx]);
+      else toPush.deleted.push({ id, updatedAt: localTime });
+    }
+  }
+
+  for (const b of state.books) if (!remoteIds.has(b.id)) toPush.books.push(b);
+  for (const [id, t] of Object.entries(state.deleted)) if (!remoteIds.has(id)) toPush.deleted.push({ id, updatedAt: t });
+
+  if (changed) {
+    saveBooks();
+    render();
+  }
+  return toPush;
+}
+
+window.bookshelf = { mergeRemote };
 
 // ---------- search helpers ----------
 
@@ -377,16 +451,18 @@ form.addEventListener('submit', (e) => {
     return;
   }
 
-  if (state.editingId) {
-    const idx = state.books.findIndex((b) => b.id === state.editingId);
+  data.updatedAt = Date.now();
+  // 수정하는 사이 다른 기기에서 삭제됐을 수도 있으니 못 찾으면 새로 추가
+  const idx = state.editingId ? state.books.findIndex((b) => b.id === state.editingId) : -1;
+  if (idx >= 0) {
     data.addedAt = state.books[idx].addedAt;
     state.books[idx] = data;
   } else {
     state.books.push(data);
   }
-  saveBooks();
+  delete state.deleted[data.id];
   dialog.close();
-  render();
+  commitChanges([data]);
 });
 
 els.title.addEventListener('input', updateDupWarning);
@@ -402,10 +478,10 @@ $('#cancelBtn').addEventListener('click', () => dialog.close());
 $('#deleteBtn').addEventListener('click', () => {
   const book = state.books.find((b) => b.id === state.editingId);
   if (!book || !confirm(`"${book.title}"을(를) 삭제할까요?`)) return;
-  state.books = state.books.filter((b) => b.id !== state.editingId);
-  saveBooks();
+  state.books = state.books.filter((b) => b.id !== book.id);
+  state.deleted[book.id] = Date.now();
   dialog.close();
-  render();
+  commitChanges([], [book.id]);
 });
 
 // ---------- events ----------
@@ -441,8 +517,8 @@ $('#bookList').addEventListener('change', (e) => {
   const book = state.books.find((b) => b.id === id);
   if (!book) return;
   book.status = e.target.value;
-  saveBooks();
-  render();
+  book.updatedAt = Date.now();
+  commitChanges([book]);
 });
 
 $('#bookList').addEventListener('click', (e) => {
@@ -474,9 +550,13 @@ $('#importInput').addEventListener('change', async (e) => {
     const incoming = data.map(sanitizeBook).filter(Boolean);
     const existingIds = new Set(state.books.map((b) => b.id));
     const added = incoming.filter((b) => !existingIds.has(b.id));
+    // 가져온 시점을 수정 시각으로 해서, 예전에 삭제한 책도 다른 기기에서 다시 살아나게 함
+    added.forEach((b) => {
+      b.updatedAt = Date.now();
+      delete state.deleted[b.id];
+    });
     state.books.push(...added);
-    saveBooks();
-    render();
+    commitChanges(added);
     alert(`${added.length}권을 가져왔어요.${incoming.length > added.length ? ` (이미 있는 ${incoming.length - added.length}권은 건너뜀)` : ''}`);
   } catch {
     alert('파일을 읽을 수 없어요. 이 앱에서 내보낸 JSON 파일인지 확인해 주세요.');
