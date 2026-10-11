@@ -12,6 +12,8 @@
   --danger: #b33a3a;
   --owned-bg: #e8f4ec;
   --notowned-bg: #fbecea;
+  --borrowed: #3b6ea8;
+  --borrowed-bg: #e8f0fa;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -25,6 +27,8 @@
     --accent-text: #1c1a17;
     --owned-bg: #1f3427;
     --notowned-bg: #3a2322;
+    --borrowed: #7fa9dc;
+    --borrowed-bg: #1f2b3a;
   }
 }
 
@@ -90,6 +94,12 @@ button.ghost, .button-like.ghost { background: transparent; font-size: 0.9rem; }
 }
 .ownership.owned { background: var(--owned-bg); }
 .ownership.not-owned { background: var(--notowned-bg); }
+.ownership.borrowed { background: var(--borrowed-bg); }
+.ownership small { color: var(--muted); }
+
+.chips { display: flex; gap: 6px; margin-top: 16px; }
+.chips button { border-radius: 999px; padding: 4px 14px; color: var(--muted); }
+.chips button.active { background: var(--accent); border-color: var(--accent); color: var(--accent-text); font-weight: 600; }
 
 .stats {
   display: grid;
@@ -151,20 +161,21 @@ button.ghost, .button-like.ghost { background: transparent; font-size: 0.9rem; }
 }
 .book[data-status="reading"] { border-left-color: var(--reading); }
 .book[data-status="read"] { border-left-color: var(--read); }
+.book[data-ownership="borrowed"] { border-style: dashed; border-left-style: solid; }
 .book-info { flex: 1; min-width: 0; }
 .book-title { font-weight: 600; overflow-wrap: anywhere; }
 .book-meta { font-size: 0.85rem; color: var(--muted); overflow-wrap: anywhere; }
 .book-memo { font-size: 0.8rem; color: var(--muted); font-style: italic; margin-top: 2px; }
-.genre-tag {
+.book-tags { margin-top: 4px; display: flex; gap: 4px; flex-wrap: wrap; }
+.tag {
   display: inline-block;
   font-size: 0.75rem;
   padding: 1px 8px;
   border-radius: 999px;
   border: 1px solid var(--border);
-  margin-left: 6px;
-  vertical-align: middle;
-  font-weight: normal;
 }
+.kdc-tag b { font-variant-numeric: tabular-nums; }
+.borrowed-tag { color: var(--borrowed); border-color: var(--borrowed); }
 .status-select {
   padding: 4px 6px;
   border: 1px solid var(--border);
@@ -189,7 +200,7 @@ dialog::backdrop { background: rgba(0, 0, 0, 0.4); }
 #bookForm { padding: 20px; display: grid; gap: 10px; }
 #bookForm h2 { margin: 0 0 4px; font-size: 1.2rem; }
 #bookForm > label { display: grid; gap: 4px; font-size: 0.9rem; }
-#bookForm input:not([type="radio"]), #bookForm textarea {
+#bookForm input:not([type="radio"]), #bookForm textarea, #bookForm select {
   padding: 8px 10px;
   border: 1px solid var(--border);
   border-radius: 8px;
@@ -197,8 +208,12 @@ dialog::backdrop { background: rgba(0, 0, 0, 0.4); }
   width: 100%;
 }
 .req { color: var(--danger); }
-.status-field { border: 1px solid var(--border); border-radius: 8px; display: flex; gap: 14px; flex-wrap: wrap; }
-.status-field legend { font-size: 0.9rem; padding: 0 4px; }
+.radio-field { border: 1px solid var(--border); border-radius: 8px; display: flex; gap: 6px 14px; flex-wrap: wrap; }
+.radio-field legend { font-size: 0.9rem; padding: 0 4px; }
+.kdc-field { display: grid; gap: 4px; font-size: 0.9rem; }
+.kdc-selects { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.kdc-preview { color: var(--accent); font-weight: 600; }
+#bookForm select:disabled { opacity: 0.5; }
 .warning { margin: 0; color: var(--reading); font-size: 0.85rem; }
 .dialog-actions { display: flex; gap: 8px; margin-top: 6px; }
 .spacer { flex: 1; }

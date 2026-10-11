@@ -1,15 +1,16 @@
 'use strict';
 
 const STORAGE_KEY = 'bookshelf.books.v1';
-const DEFAULT_GENRES = ['소설', '시', '에세이', '인문', '역사', '과학', '경제/경영', '자기계발', '예술', '만화', '아동', '기타'];
 const STATUS_LABELS = { unread: '안 읽음', reading: '읽는 중', read: '읽음' };
+const OWNERSHIP_LABELS = { owned: '소장', borrowed: '대여' };
 
 const $ = (sel) => document.querySelector(sel);
 
 const state = {
   books: loadBooks(),
+  ownership: 'all',
   status: 'all',
-  genre: '',
+  kdc: '',
   sort: 'recent',
   query: '',
   editingId: null,
@@ -38,14 +39,41 @@ function saveBooks() {
 function sanitizeBook(b) {
   if (!b || typeof b.title !== 'string' || !b.title.trim()) return null;
   const str = (v) => (typeof v === 'string' ? v.trim() : '');
+  const digit = (v, min) => (/^\d$/.test(v) && Number(v) >= min ? v : '');
+
+  let memo = str(b.memo);
+  let kdcMain = digit(b.kdcMain, 0);
+  let kdcDiv = kdcMain ? digit(b.kdcDiv, 1) : '';
+  if (kdcDiv && !KDC[kdcMain].divs[kdcDiv]) kdcDiv = '';
+  let litForm = kdcMain === LITERATURE ? digit(b.litForm, 1) : '';
+  if (litForm === '9') litForm = '';
+
+  // 이전 버전의 "종류"(genre)를 KDC로 옮기고, 옮길 수 없으면 메모에 남김
+  const genre = str(b.genre);
+  if (genre && !kdcMain) {
+    const mapped = LEGACY_GENRE_MAP[genre];
+    if (mapped) {
+      kdcMain = mapped.main;
+      kdcDiv = mapped.div || '';
+      litForm = mapped.form || '';
+    } else {
+      memo = memo ? `${memo} (이전 종류: ${genre})` : `이전 종류: ${genre}`;
+    }
+  }
+
+  const ownership = b.ownership === 'borrowed' ? 'borrowed' : 'owned';
   return {
     id: str(b.id) || newId(),
     title: b.title.trim(),
     author: str(b.author),
     publisher: str(b.publisher),
-    genre: str(b.genre),
+    kdcMain,
+    kdcDiv,
+    litForm,
+    ownership,
+    library: ownership === 'borrowed' ? str(b.library) : '',
     status: STATUS_LABELS[b.status] ? b.status : 'unread',
-    memo: str(b.memo),
+    memo,
     addedAt: Number(b.addedAt) || Date.now(),
   };
 }
@@ -64,6 +92,17 @@ function normalize(s) {
 function matchesQuery(book, q) {
   if (!q) return true;
   return [book.title, book.author, book.publisher].some((f) => normalize(f).includes(q));
+}
+
+// 분류 필터 값: "m:8" 주류, "d:81" 강목, "f:3" 문학 형식, "none" 미분류
+function matchesKdc(book, filter) {
+  if (!filter) return true;
+  if (filter === 'none') return !book.kdcMain;
+  const [type, v] = filter.split(':');
+  if (type === 'm') return book.kdcMain === v;
+  if (type === 'd') return book.kdcMain === v[0] && book.kdcDiv === v[1];
+  if (type === 'f') return book.kdcMain === LITERATURE && book.litForm === v;
+  return true;
 }
 
 function escapeHtml(s) {
@@ -92,18 +131,19 @@ function highlight(text, q) {
 function render() {
   const q = normalize(state.query);
   const matched = state.books.filter((b) => matchesQuery(b, q));
+  const inOwnership = (b) => state.ownership === 'all' || b.ownership === state.ownership;
 
   renderOwnership(matched);
-  renderStats();
-  renderGenreOptions();
+  renderStats(state.books.filter(inOwnership));
+  renderKdcFilter(state.books.filter(inOwnership));
 
   const visible = matched
+    .filter(inOwnership)
     .filter((b) => state.status === 'all' || b.status === state.status)
-    .filter((b) => !state.genre || b.genre === state.genre)
+    .filter((b) => matchesKdc(b, state.kdc))
     .sort(compareBooks);
 
-  const list = $('#bookList');
-  list.innerHTML = visible.map((b) => bookItemHtml(b, q)).join('');
+  $('#bookList').innerHTML = visible.map((b) => bookItemHtml(b, q)).join('');
 
   const empty = $('#emptyMsg');
   if (visible.length === 0) {
@@ -117,8 +157,14 @@ function render() {
 }
 
 function compareBooks(a, b) {
-  if (state.sort === 'title') return a.title.localeCompare(b.title, 'ko');
-  if (state.sort === 'author') return (a.author || '￿').localeCompare(b.author || '￿', 'ko') || a.title.localeCompare(b.title, 'ko');
+  const byTitle = a.title.localeCompare(b.title, 'ko');
+  if (state.sort === 'title') return byTitle;
+  if (state.sort === 'author') return (a.author || '￿').localeCompare(b.author || '￿', 'ko') || byTitle;
+  if (state.sort === 'kdc') {
+    // 미분류는 맨 뒤, 같은 번호면 문학 형식까지 비교
+    const key = (x) => (x.kdcMain ? kdcCode(x) + (x.litForm || '0') : '￿');
+    return key(a).localeCompare(key(b)) || byTitle;
+  }
   return b.addedAt - a.addedAt;
 }
 
@@ -127,17 +173,33 @@ function bookItemHtml(b, q) {
   const options = Object.entries(STATUS_LABELS)
     .map(([v, label]) => `<option value="${v}"${v === b.status ? ' selected' : ''}>${label}</option>`)
     .join('');
+  const kdcTag = b.kdcMain
+    ? `<span class="tag kdc-tag" title="KDC ${kdcCode(b)}"><b>${kdcCode(b)}</b> ${escapeHtml(kdcName(b))}</span>`
+    : '';
+  const ownTag = b.ownership === 'borrowed'
+    ? `<span class="tag borrowed-tag">🏛️ 대여${b.library ? ` · ${escapeHtml(b.library)}` : ''}</span>`
+    : '';
   return `
-    <li class="book" data-id="${escapeHtml(b.id)}" data-status="${b.status}">
+    <li class="book" data-id="${escapeHtml(b.id)}" data-status="${b.status}" data-ownership="${b.ownership}">
       <div class="book-info">
-        <div class="book-title">${highlight(b.title, q)}${b.genre ? `<span class="genre-tag">${escapeHtml(b.genre)}</span>` : ''}</div>
+        <div class="book-title">${highlight(b.title, q)}</div>
         ${meta ? `<div class="book-meta">${meta}</div>` : ''}
+        ${kdcTag || ownTag ? `<div class="book-tags">${ownTag}${kdcTag}</div>` : ''}
         ${b.memo ? `<div class="book-memo">${escapeHtml(b.memo)}</div>` : ''}
       </div>
       <select class="status-select" aria-label="읽기 상태">${options}</select>
     </li>`;
 }
 
+function statusSummary(books) {
+  return Object.keys(STATUS_LABELS)
+    .map((s) => [s, books.filter((b) => b.status === s).length])
+    .filter(([, n]) => n > 0)
+    .map(([s, n]) => `${STATUS_LABELS[s]} ${n}`)
+    .join(', ');
+}
+
+// 검색어가 있을 때 "집에 있는지"를 알려줌. 대여 기록은 소장으로 치지 않음.
 function renderOwnership(matched) {
   const box = $('#ownership');
   const raw = state.query.trim();
@@ -146,25 +208,31 @@ function renderOwnership(matched) {
     return;
   }
   box.hidden = false;
-  if (matched.length > 0) {
+  const owned = matched.filter((b) => b.ownership === 'owned');
+  const borrowed = matched.filter((b) => b.ownership === 'borrowed');
+  const libraries = [...new Set(borrowed.map((b) => b.library).filter(Boolean))];
+  const where = libraries.length ? ` (${escapeHtml(libraries.join(', '))})` : '';
+  const q = `<b>"${escapeHtml(raw)}"</b>`;
+
+  if (owned.length > 0) {
     box.className = 'ownership owned';
-    const counts = Object.keys(STATUS_LABELS)
-      .map((s) => [s, matched.filter((b) => b.status === s).length])
-      .filter(([, n]) => n > 0)
-      .map(([s, n]) => `${STATUS_LABELS[s]} ${n}`)
-      .join(', ');
-    box.innerHTML = `<span>✅ <b>"${escapeHtml(raw)}"</b> — 갖고 있는 책이 <b>${matched.length}권</b> 있어요 (${counts})</span>`;
+    box.innerHTML = `<span>✅ ${q} — 집에 있는 책이 <b>${owned.length}권</b> 있어요 (${statusSummary(owned)})` +
+      `${borrowed.length ? `<br><small>도서관에서 빌려 본 기록도 ${borrowed.length}권 있어요${where}</small>` : ''}</span>`;
+  } else if (borrowed.length > 0) {
+    box.className = 'ownership borrowed';
+    box.innerHTML = `<span>🏛️ ${q} — 집에는 없지만 도서관에서 빌려 본 책이에요${where}</span>
+      <button type="button" class="primary" id="quickAddBtn">소장 도서로 추가</button>`;
   } else {
     box.className = 'ownership not-owned';
-    box.innerHTML = `<span>❌ <b>"${escapeHtml(raw)}"</b> — 갖고 있지 않은 책이에요</span>
+    box.innerHTML = `<span>❌ ${q} — 갖고 있지 않은 책이에요</span>
       <button type="button" class="primary" id="quickAddBtn">이 제목으로 추가</button>`;
   }
 }
 
-function renderStats() {
-  const count = (s) => state.books.filter((b) => b.status === s).length;
+function renderStats(books) {
+  const count = (s) => books.filter((b) => b.status === s).length;
   const items = [
-    ['전체', state.books.length],
+    [state.ownership === 'all' ? '전체' : OWNERSHIP_LABELS[state.ownership], books.length],
     ['안 읽음', count('unread')],
     ['읽는 중', count('reading')],
     ['읽음', count('read')],
@@ -172,30 +240,82 @@ function renderStats() {
   $('#stats').innerHTML = items.map(([label, n]) => `<div class="stat"><b>${n}</b><span>${label}</span></div>`).join('');
 }
 
-function uniqueValues(field) {
-  return [...new Set(state.books.map((b) => b[field]).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'ko'));
+// 지금 책장에 있는 분류만 필터에 보여줌 (주류 → 강목, 문학은 형식별로도)
+function renderKdcFilter(books) {
+  const opts = [];
+  const add = (value, label, n) => opts.push({ value, label: `${label} (${n})` });
+  const count = (filter) => books.filter((b) => matchesKdc(b, filter)).length;
+
+  KDC.forEach((main, m) => {
+    const mainKey = String(m);
+    const n = count(`m:${mainKey}`);
+    if (!n) return;
+    add(`m:${mainKey}`, `${mainKey}00 ${main.name}`, n);
+    main.divs.forEach((name, d) => {
+      if (!d || !name) return;
+      const dn = count(`d:${mainKey}${d}`);
+      if (dn) add(`d:${mainKey}${d}`, `  └ ${mainKey}${d}0 ${name}`, dn);
+    });
+    if (mainKey === LITERATURE) {
+      LIT_FORMS.forEach((form, f) => {
+        if (!form) return;
+        const fn = count(`f:${f}`);
+        if (fn) add(`f:${f}`, `  └ 문학 · ${form}`, fn);
+      });
+    }
+  });
+  const none = count('none');
+  if (none) add('none', '미분류', none);
+
+  if (state.kdc && !opts.some((o) => o.value === state.kdc)) state.kdc = '';
+  $('#kdcFilter').innerHTML = '<option value="">모든 분류</option>' +
+    opts.map((o) => `<option value="${o.value}"${o.value === state.kdc ? ' selected' : ''}>${escapeHtml(o.label)}</option>`).join('');
 }
 
-function renderGenreOptions() {
-  const genres = uniqueValues('genre');
-  if (state.genre && !genres.includes(state.genre)) state.genre = '';
-  $('#genreFilter').innerHTML = '<option value="">모든 종류</option>' +
-    genres.map((g) => `<option value="${escapeHtml(g)}"${g === state.genre ? ' selected' : ''}>${escapeHtml(g)}</option>`).join('');
+function uniqueValues(field) {
+  return [...new Set(state.books.map((b) => b[field]).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'ko'));
 }
 
 function fillDatalists() {
   const fill = (id, values) => {
     $(id).innerHTML = values.map((v) => `<option value="${escapeHtml(v)}"></option>`).join('');
   };
-  fill('#genreList', [...new Set([...DEFAULT_GENRES, ...uniqueValues('genre')])]);
   fill('#authorList', uniqueValues('author'));
   fill('#publisherList', uniqueValues('publisher'));
+  fill('#libraryList', uniqueValues('library'));
 }
 
 // ---------- dialog ----------
 
 const dialog = $('#bookDialog');
 const form = $('#bookForm');
+const els = form.elements;
+
+els.kdcMain.innerHTML = '<option value="">미분류</option>' +
+  KDC.map((m, i) => `<option value="${i}">${i}00 ${m.name}</option>`).join('');
+els.litForm.innerHTML = '<option value="">형식 선택 안 함</option>' +
+  LIT_FORMS.map((f, i) => (f ? `<option value="${i}">${f}</option>` : '')).join('');
+
+function fillDivOptions() {
+  const main = els.kdcMain.value;
+  els.kdcDiv.disabled = !main;
+  els.kdcDiv.innerHTML = main
+    ? `<option value="">${main}00 ${KDC[main].name} 전체</option>` +
+      KDC[main].divs.map((name, d) => (d && name ? `<option value="${d}">${main}${d}0 ${name}</option>` : '')).join('')
+    : '<option value="">강목</option>';
+}
+
+function updateKdcFields() {
+  const isLit = els.kdcMain.value === LITERATURE;
+  els.litForm.hidden = !isLit;
+  if (!isLit) els.litForm.value = '';
+  const sel = { kdcMain: els.kdcMain.value, kdcDiv: els.kdcDiv.value, litForm: els.litForm.value };
+  $('#kdcPreview').textContent = sel.kdcMain ? `— ${kdcCode(sel)} ${kdcName(sel)}` : '';
+}
+
+function updateLibraryField() {
+  $('#libraryField').hidden = els.ownership.value !== 'borrowed';
+}
 
 function openDialog(book, prefillTitle = '') {
   state.editingId = book ? book.id : null;
@@ -203,41 +323,61 @@ function openDialog(book, prefillTitle = '') {
   $('#dialogTitle').textContent = book ? '책 수정' : '책 추가';
   $('#deleteBtn').hidden = !book;
   $('#dupWarning').hidden = true;
-  const b = book || { title: prefillTitle, author: '', publisher: '', genre: '', status: 'unread', memo: '' };
-  for (const f of ['title', 'author', 'publisher', 'genre', 'memo']) form.elements[f].value = b[f];
-  form.elements.status.value = b.status;
+  const b = book || {
+    title: prefillTitle, author: '', publisher: '', kdcMain: '', kdcDiv: '', litForm: '',
+    // 대여 탭을 보고 있을 때 추가하면 대여로 시작 (검색 후 "소장 도서로 추가"는 항상 소장)
+    ownership: !prefillTitle && state.ownership === 'borrowed' ? 'borrowed' : 'owned',
+    library: '', status: 'unread', memo: '',
+  };
+  for (const f of ['title', 'author', 'publisher', 'library', 'memo']) els[f].value = b[f];
+  els.ownership.value = b.ownership;
+  els.status.value = b.status;
+  els.kdcMain.value = b.kdcMain;
+  fillDivOptions();
+  els.kdcDiv.value = b.kdcDiv;
+  els.litForm.value = b.litForm;
+  updateKdcFields();
+  updateLibraryField();
   fillDatalists();
   dialog.showModal();
-  form.elements.title.focus();
+  els.title.focus();
 }
 
-function findDuplicate(title, author) {
+function findDuplicate(title, author, ownership) {
   const t = normalize(title);
   const a = normalize(author);
-  return state.books.find((b) => b.id !== state.editingId && normalize(b.title) === t && (!a || !b.author || normalize(b.author) === a));
+  return state.books.find((b) => b.id !== state.editingId && b.ownership === ownership &&
+    normalize(b.title) === t && (!a || !b.author || normalize(b.author) === a));
 }
 
 function updateDupWarning() {
-  const dup = findDuplicate(form.elements.title.value, form.elements.author.value);
+  const dup = findDuplicate(els.title.value, els.author.value, els.ownership.value);
   const warn = $('#dupWarning');
   warn.hidden = !dup;
-  if (dup) warn.textContent = `⚠️ 이미 같은 책이 있어요: ${dup.title}${dup.author ? ` (${dup.author})` : ''} — ${STATUS_LABELS[dup.status]}`;
+  if (dup) {
+    warn.textContent = `⚠️ 이미 ${OWNERSHIP_LABELS[dup.ownership]} 목록에 같은 책이 있어요: ` +
+      `${dup.title}${dup.author ? ` (${dup.author})` : ''} — ${STATUS_LABELS[dup.status]}`;
+  }
 }
 
 form.addEventListener('submit', (e) => {
   e.preventDefault();
   const data = sanitizeBook({
     id: state.editingId || newId(),
-    title: form.elements.title.value,
-    author: form.elements.author.value,
-    publisher: form.elements.publisher.value,
-    genre: form.elements.genre.value,
-    status: form.elements.status.value,
-    memo: form.elements.memo.value,
+    title: els.title.value,
+    author: els.author.value,
+    publisher: els.publisher.value,
+    kdcMain: els.kdcMain.value,
+    kdcDiv: els.kdcDiv.value,
+    litForm: els.litForm.value,
+    ownership: els.ownership.value,
+    library: els.library.value,
+    status: els.status.value,
+    memo: els.memo.value,
   });
   if (!data) return;
 
-  if (!state.editingId && findDuplicate(data.title, data.author) &&
+  if (!state.editingId && findDuplicate(data.title, data.author, data.ownership) &&
       !confirm('이미 같은 책이 등록되어 있어요. 그래도 추가할까요?')) {
     return;
   }
@@ -254,8 +394,15 @@ form.addEventListener('submit', (e) => {
   render();
 });
 
-form.elements.title.addEventListener('input', updateDupWarning);
-form.elements.author.addEventListener('input', updateDupWarning);
+els.title.addEventListener('input', updateDupWarning);
+els.author.addEventListener('input', updateDupWarning);
+els.kdcMain.addEventListener('change', () => { fillDivOptions(); updateKdcFields(); });
+els.kdcDiv.addEventListener('change', updateKdcFields);
+els.litForm.addEventListener('change', updateKdcFields);
+form.querySelectorAll('[name=ownership]').forEach((r) => r.addEventListener('change', () => {
+  updateLibraryField();
+  updateDupWarning();
+}));
 $('#cancelBtn').addEventListener('click', () => dialog.close());
 
 $('#deleteBtn').addEventListener('click', () => {
@@ -278,15 +425,19 @@ $('#ownership').addEventListener('click', (e) => {
   if (e.target.id === 'quickAddBtn') openDialog(null, state.query.trim());
 });
 
-$('#statusTabs').addEventListener('click', (e) => {
-  const btn = e.target.closest('button[data-status]');
-  if (!btn) return;
-  state.status = btn.dataset.status;
-  document.querySelectorAll('#statusTabs button').forEach((b) => b.classList.toggle('active', b === btn));
-  render();
-});
+function bindTabs(containerSel, attr, key) {
+  $(containerSel).addEventListener('click', (e) => {
+    const btn = e.target.closest(`button[data-${attr}]`);
+    if (!btn) return;
+    state[key] = btn.dataset[attr];
+    document.querySelectorAll(`${containerSel} button`).forEach((b) => b.classList.toggle('active', b === btn));
+    render();
+  });
+}
+bindTabs('#ownTabs', 'own', 'ownership');
+bindTabs('#statusTabs', 'status', 'status');
 
-$('#genreFilter').addEventListener('change', (e) => { state.genre = e.target.value; render(); });
+$('#kdcFilter').addEventListener('change', (e) => { state.kdc = e.target.value; render(); });
 $('#sortSelect').addEventListener('change', (e) => { state.sort = e.target.value; render(); });
 $('#addBtn').addEventListener('click', () => openDialog(null));
 
@@ -338,4 +489,6 @@ $('#importInput').addEventListener('change', async (e) => {
   }
 });
 
+// 이전 버전 데이터(종류 → KDC)를 옮긴 결과를 바로 저장
+if (state.books.length) saveBooks();
 render();

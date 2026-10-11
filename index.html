@@ -24,6 +24,12 @@
       <div id="ownership" class="ownership" hidden></div>
     </section>
 
+    <nav class="chips" id="ownTabs" aria-label="소장/대여">
+      <button type="button" data-own="all" class="active">전체</button>
+      <button type="button" data-own="owned">🏠 소장</button>
+      <button type="button" data-own="borrowed">🏛️ 대여</button>
+    </nav>
+
     <section class="stats" id="stats"></section>
 
     <nav class="tabs" id="statusTabs">
@@ -34,13 +40,14 @@
     </nav>
 
     <section class="toolbar">
-      <select id="genreFilter" aria-label="종류 필터">
-        <option value="">모든 종류</option>
+      <select id="kdcFilter" aria-label="분류 필터">
+        <option value="">모든 분류</option>
       </select>
       <select id="sortSelect" aria-label="정렬">
         <option value="recent">최근 추가순</option>
         <option value="title">제목순</option>
         <option value="author">저자순</option>
+        <option value="kdc">분류번호순</option>
       </select>
       <button type="button" id="addBtn" class="primary">+ 책 추가</button>
     </section>
@@ -52,7 +59,15 @@
   <dialog id="bookDialog">
     <form id="bookForm" method="dialog">
       <h2 id="dialogTitle">책 추가</h2>
-      <label>제목 <span class="req">*</span>
+      <fieldset class="radio-field">
+        <legend>소장 / 대여</legend>
+        <label><input type="radio" name="ownership" value="owned" checked> 🏠 소장 (집에 있는 책)</label>
+        <label><input type="radio" name="ownership" value="borrowed"> 🏛️ 대여 (빌려 본 책)</label>
+      </fieldset>
+      <label id="libraryField" hidden>도서관
+        <input name="library" list="libraryList" placeholder="예: 시립중앙도서관" autocomplete="off">
+      </label>
+      <label><span>제목 <span class="req">*</span></span>
         <input name="title" required autocomplete="off">
       </label>
       <label>저자
@@ -61,10 +76,15 @@
       <label>출판사
         <input name="publisher" list="publisherList" autocomplete="off">
       </label>
-      <label>종류
-        <input name="genre" list="genreList" placeholder="소설, 시, 에세이…" autocomplete="off">
-      </label>
-      <fieldset class="status-field">
+      <div class="kdc-field">
+        <span class="field-label">분류 (KDC) <span id="kdcPreview" class="kdc-preview"></span></span>
+        <div class="kdc-selects">
+          <select name="kdcMain" aria-label="주류"></select>
+          <select name="kdcDiv" aria-label="강목"></select>
+        </div>
+        <select name="litForm" id="litFormSelect" aria-label="문학 형식" hidden></select>
+      </div>
+      <fieldset class="radio-field">
         <legend>읽기 상태</legend>
         <label><input type="radio" name="status" value="unread" checked> 안 읽음</label>
         <label><input type="radio" name="status" value="reading"> 읽는 중</label>
@@ -83,10 +103,11 @@
     </form>
   </dialog>
 
-  <datalist id="genreList"></datalist>
   <datalist id="authorList"></datalist>
   <datalist id="publisherList"></datalist>
+  <datalist id="libraryList"></datalist>
 
+  <script src="kdc.js"></script>
   <script src="app.js"></script>
 </body>
 </html>
