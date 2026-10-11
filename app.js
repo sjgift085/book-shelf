@@ -1,10 +1,15 @@
 'use strict';
 
 const STORAGE_KEY = 'bookshelf.books.v1';
+// 데이터 형식을 바꾸기 전의 원본을 한 번 보관해 두는 곳
+const BACKUP_KEY = 'bookshelf.books.v1.backup';
 const STATUS_LABELS = { unread: '안 읽음', reading: '읽는 중', read: '읽음' };
 const OWNERSHIP_LABELS = { owned: '소장', borrowed: '대여' };
 
 const $ = (sel) => document.querySelector(sel);
+
+// 저장된 데이터를 읽지 못했으면 빈 목록으로 덮어쓰지 않도록 저장을 막음
+let loadFailed = false;
 
 const state = {
   books: loadBooks(),
@@ -19,16 +24,26 @@ const state = {
 // ---------- storage ----------
 
 function loadBooks() {
+  let raw = null;
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    const data = raw ? JSON.parse(raw) : [];
-    return Array.isArray(data) ? data.map(sanitizeBook).filter(Boolean) : [];
-  } catch {
+    raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return [];
+    if (!localStorage.getItem(BACKUP_KEY)) localStorage.setItem(BACKUP_KEY, raw);
+    const data = JSON.parse(raw);
+    if (!Array.isArray(data)) throw new Error('형식 오류');
+    return data.map(sanitizeBook).filter(Boolean);
+  } catch (err) {
+    console.error('책 목록을 읽지 못했어요', err);
+    loadFailed = raw !== null;
     return [];
   }
 }
 
 function saveBooks() {
+  if (loadFailed) {
+    alert('저장된 책 목록을 읽지 못해서, 기존 기록을 지키기 위해 저장하지 않았어요. 페이지를 새로고침해 주세요.');
+    return;
+  }
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state.books));
   } catch {
@@ -148,7 +163,9 @@ function render() {
   const empty = $('#emptyMsg');
   if (visible.length === 0) {
     empty.hidden = false;
-    empty.textContent = state.books.length === 0
+    empty.textContent = loadFailed
+      ? '저장된 책 목록을 읽지 못했어요. 기록은 지워지지 않았으니 페이지를 새로고침해 주세요.'
+      : state.books.length === 0
       ? '아직 등록된 책이 없어요. "+ 책 추가"로 첫 책을 등록해 보세요.'
       : '조건에 맞는 책이 없어요.';
   } else {

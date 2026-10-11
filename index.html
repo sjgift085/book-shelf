@@ -4,7 +4,18 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>우리집 책장</title>
-  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="style.css?v=2">
+  <script>
+    // 브라우저에 이전 버전 파일이 남아 새 파일과 섞이면 목록이 비어 보일 수 있어 안내를 띄움
+    window.addEventListener('error', function () {
+      if (document.getElementById('loadError')) return;
+      var box = document.createElement('div');
+      box.id = 'loadError';
+      box.className = 'load-error';
+      box.textContent = '앱을 불러오다 문제가 생겼어요. 저장된 책은 그대로 있으니 페이지를 새로고침해 주세요.';
+      document.body.prepend(box);
+    });
+  </script>
 </head>
 <body>
   <header class="top">
@@ -107,7 +118,7 @@
   <datalist id="publisherList"></datalist>
   <datalist id="libraryList"></datalist>
 
-  <script src="kdc.js"></script>
-  <script src="app.js"></script>
+  <script src="kdc.js?v=2"></script>
+  <script src="app.js?v=2"></script>
 </body>
 </html>
