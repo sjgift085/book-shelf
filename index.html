@@ -4,8 +4,26 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>나만의 책장</title>
-  <link rel="stylesheet" href="style.css?v=4">
+  <link rel="stylesheet" href="style.css?v=5">
   <script>
+    // 앱을 고칠 때마다 이 숫자, version.json, 아래 ?v= 값을 함께 올릴 것.
+    // 브라우저가 예전 페이지를 캐시해 두었으면 version.json과 달라지므로, 캐시를 갱신하고 한 번 새로고침함.
+    var APP_VERSION = 5;
+    fetch('version.json', { cache: 'no-store' })
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        if (data.version === APP_VERSION) return;
+        var key = 'bookshelf.reloadedFor.' + data.version;
+        try {
+          if (sessionStorage.getItem(key)) return;
+          sessionStorage.setItem(key, '1');
+        } catch (e) {
+          return;
+        }
+        fetch(location.href, { cache: 'reload' }).finally(function () { location.reload(); });
+      })
+      .catch(function () {});
+
     // 브라우저에 이전 버전 파일이 남아 새 파일과 섞이면 목록이 비어 보일 수 있어 안내를 띄움
     window.addEventListener('error', function () {
       if (document.getElementById('loadError')) return;
@@ -117,7 +135,7 @@
   <datalist id="publisherList"></datalist>
   <datalist id="libraryList"></datalist>
 
-  <script src="kdc.js?v=4"></script>
-  <script src="app.js?v=4"></script>
+  <script src="kdc.js?v=5"></script>
+  <script src="app.js?v=5"></script>
 </body>
 </html>
