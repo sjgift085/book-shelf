@@ -59,7 +59,7 @@ function sanitizeBook(b) {
   let memo = str(b.memo);
   let kdcMain = digit(b.kdcMain, 0);
   let litForm = kdcMain === LITERATURE ? digit(b.litForm, 1) : '';
-  if (litForm === '9') litForm = '';
+  if (!LIT_FORMS[litForm]) litForm = '';
 
   // 이전 버전의 "종류"(genre)를 KDC로 옮기고, 옮길 수 없으면 메모에 남김
   const genre = str(b.genre);
