@@ -1,13 +1,14 @@
-"""새로 개막하는 뮤지컬: KOPIS(공연예술통합전산망) Open API.
+"""새로 개막하는 뮤지컬.
 
-서비스 키는 https://www.kopis.or.kr/por/cs/openapi/openApiInfo.do 에서 무료로 발급받아
-환경변수 KOPIS_API_KEY 로 넘긴다.
+기본은 PlayDB(회원가입 불필요, playdb.py). KOPIS(공연예술통합전산망) Open API 키가
+환경변수 KOPIS_API_KEY 로 주어지면 KOPIS 정보도 함께 쓴다.
 """
 import os
 from datetime import timedelta
 
 from bs4 import BeautifulSoup
 
+import playdb
 from common import clean, fetch, now_kst
 
 API = "http://www.kopis.or.kr/openApi/restful"
@@ -81,12 +82,7 @@ def _detail(key, show_id):
     }
 
 
-def collect(previous):
-    """previous: 지난번 shows.json 의 items (상세정보를 다시 받지 않으려고 재사용)."""
-    key = os.environ.get("KOPIS_API_KEY")
-    if not key:
-        return None, ["KOPIS_API_KEY가 설정되지 않아 새 공연 정보를 건너뜀"]
-
+def _kopis(key, previous):
     today = now_kst().date()
     lo, hi = today - timedelta(days=PAST_DAYS), today + timedelta(days=FUTURE_DAYS)
     # KOPIS는 한 번에 31일까지만 조회되므로 둘로 나눠 묻는다
@@ -109,6 +105,42 @@ def collect(previous):
             except Exception as e:  # noqa: BLE001
                 errors.append(f"{s['title']} 상세: {e}")
                 detail = {}
-        result.append({**s, **detail})
-    result.sort(key=lambda s: s["start"], reverse=True)
+        result.append({**s, **detail, "via": "KOPIS"})
     return result, errors
+
+
+def _same(a, b):
+    norm = lambda t: "".join(ch for ch in t if ch.isalnum()).replace("뮤지컬", "")
+    return norm(a["title"]) == norm(b["title"])
+
+
+def collect(previous):
+    """previous: 지난번 shows.json 의 items (상세정보를 다시 받지 않으려고 재사용).
+
+    돌려주는 값: (공연 목록 또는 None(모든 출처 실패), 오류 목록)
+    """
+    result, errors, any_ok = [], [], False
+
+    key = os.environ.get("KOPIS_API_KEY")
+    if key:
+        try:
+            items, errs = _kopis(key, previous)
+            result += items
+            errors += errs
+            any_ok = True
+        except Exception as e:  # noqa: BLE001
+            errors.append(f"KOPIS: {e}")
+
+    items, errs = playdb.collect(previous, PAST_DAYS, FUTURE_DAYS)
+    errors += errs
+    if items:
+        any_ok = True
+    for show in items:  # KOPIS에 이미 있는 작품은 PlayDB 쪽을 빼고 줄거리만 보충
+        twin = next((r for r in result if _same(r, show)), None)
+        if twin is None:
+            result.append(show)
+        elif not twin.get("synopsis") and show.get("synopsis"):
+            twin["synopsis"] = show["synopsis"]
+
+    result.sort(key=lambda s: s["start"], reverse=True)
+    return (result if any_ok else None), errors

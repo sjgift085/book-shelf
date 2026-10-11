@@ -193,7 +193,12 @@ function renderShows() {
   empty.hidden = list.length > 0;
   empty.textContent = state.shows.length
     ? '조건에 맞는 공연이 없어요.'
-    : '공연 정보가 아직 없어요. 저장소 설정에 KOPIS_API_KEY를 등록하면 채워집니다.';
+    : '아직 수집된 공연 정보가 없어요. 아래 개막 소식 기사를 참고하세요.';
+
+  const opening = state.news.filter((n) => OPENING_RE.test(n.title));
+  $('openingNews').innerHTML = opening.length
+    ? opening.map(newsItem).join('')
+    : '<li class="empty">관련 기사가 아직 없어요.</li>';
 }
 
 function openShow(id) {
@@ -228,14 +233,20 @@ function openShow(id) {
 
 /* ---------- 기사 ---------- */
 
-function renderNews() {
-  const q = norm($('newsSearch').value);
-  const list = state.news.filter((n) => !q || norm(`${n.title} ${n.summary} ${n.press}`).includes(q));
-  $('newsList').innerHTML = list.map((n) => `<li>
+const OPENING_RE = /개막|초연|막을? 올|프리뷰|첫 공연|재연|귀환|돌아온/;
+
+function newsItem(n) {
+  return `<li>
       <a href="${safeUrl(n.url)}" target="_blank" rel="noopener">${esc(n.title)}</a>
       ${n.summary ? `<p>${esc(n.summary)}</p>` : ''}
       <span class="byline">${esc(n.press || n.via)} · ${fmtDateTime(n.published)}</span>
-    </li>`).join('');
+    </li>`;
+}
+
+function renderNews() {
+  const q = norm($('newsSearch').value);
+  const list = state.news.filter((n) => !q || norm(`${n.title} ${n.summary} ${n.press}`).includes(q));
+  $('newsList').innerHTML = list.map(newsItem).join('');
   const empty = $('newsEmpty');
   empty.hidden = list.length > 0;
   empty.textContent = state.news.length ? '검색 결과가 없어요.' : '아직 수집된 기사가 없어요.';
@@ -250,7 +261,7 @@ function renderStatus() {
     rows.push(`<li class="${s.ok ? 'ok' : 'bad'}"><a href="${safeUrl(s.home)}" target="_blank" rel="noopener">${esc(s.name)}</a>
       — ${s.ok ? `${s.count}건 확인` : esc(s.error || '실패')} <small>${fmtDateTime(s.checkedAt)}</small></li>`);
   });
-  const other = [['shows', '새 공연(KOPIS)'], ['news', '업계 기사']];
+  const other = [['shows', '새 공연(PlayDB)'], ['news', '업계 기사']];
   other.forEach(([key, name]) => {
     const s = state.status[key];
     if (!s) return;

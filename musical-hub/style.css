@@ -185,7 +185,7 @@ main { padding-top: 16px; padding-bottom: 32px; }
 .news a { color: var(--text); font-weight: 600; text-decoration: none; }
 .news a:hover { color: var(--accent); text-decoration: underline; }
 .news p { margin: 4px 0; font-size: .9rem; color: var(--muted); }
-.byline { font-size: .8rem; color: var(--muted); }
+.byline { display: block; margin-top: 2px; font-size: .8rem; color: var(--muted); }
 
 .empty { color: var(--muted); text-align: center; padding: 40px 0; }
 
@@ -235,3 +235,5 @@ dd { margin: 0; overflow-wrap: anywhere; }
   .detail-head { flex-direction: column; }
   .toolbar select { max-width: 40%; }
 }
+
+.section-title { font-size: 1rem; margin: 28px 0 4px; color: var(--muted); }

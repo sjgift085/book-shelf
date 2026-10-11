@@ -10,7 +10,7 @@ from bs4 import BeautifulSoup
 
 from common import HEADERS, KST, clean, fetch, iso, now_kst
 
-QUERIES = ["뮤지컬", "창작뮤지컬", "뮤지컬 개막", "뮤지컬 공모"]
+QUERIES = ["뮤지컬", "창작뮤지컬", "뮤지컬 개막", "뮤지컬 초연", "뮤지컬 공모"]
 MAX_AGE_DAYS = 14
 MAX_ITEMS = 80
 
